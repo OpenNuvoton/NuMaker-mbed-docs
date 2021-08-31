@@ -42,8 +42,9 @@ Then go through **DOCS** → **Getting Started Guides** → **Software requireme
 -   [Python3](https://www.python.org/) 3.8.7 (Native Windows)
     -   Python3 packages: Listed in `trusted-firmware-m/tools/requirements.txt`
 
--   Cross compiler: [GNU Arm Embedded Toolchain](https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-rm) 9-2020-q2-update 9.3.1 (Native Windows) or
+-   Cross compiler: [GNU Arm Embedded Toolchain](https://developer.arm.com/tools-and-software/open-source-software/developer-tools/gnu-toolchain/gnu-rm) 10.3-2021.07 (Native Windows) or
     Arm Compiler 6.12  (Native Windows)
+    > **_NOTE:_** **GNU Arm Embedded Toolchain 9 2020-q2-update** and earlier built code **FAILS** to run with `-Os`. Avoid these toolchain versions. Check [their bug report](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=95646).
     > **_NOTE:_** **GNU Arm Embedded Toolchain 10-2020-q4-major** built code **FAILS** to run. Avoid this toolchain version. Check [its bug report](https://gcc.gnu.org/bugzilla/show_bug.cgi?id=99157).
 
 -   GNU make (MSYS2 Pacman)
@@ -88,7 +89,7 @@ Edit the lines below to meet your environment, and add them at the end of `C:/ms
 PATH="/C/Keil_v5/ARM/ARMCLANG/bin":$PATH
 
 # GNU Arm Embedded Toolchain
-PATH="/C/Program Files (x86)/GNU Arm Embedded Toolchain/9 2020-q2-update/bin":$PATH
+PATH="/C/Program Files (x86)/GNU Arm Embedded Toolchain/10 2021.07/bin":$PATH
 
 # CMake
 PATH="/C/Program Files/CMake/bin":$PATH
@@ -129,9 +130,9 @@ Python 3.8.7
 pip 21.1.2 from c:\python38\lib\site-packages\pip (python 3.8)
 
 $ which arm-none-eabi-gcc; arm-none-eabi-gcc --version
-/C/Program Files (x86)/GNU Arm Embedded Toolchain/9 2020-q2-update/bin/arm-none-eabi-gcc
-arm-none-eabi-gcc.exe (GNU Arm Embedded Toolchain 9-2020-q2-update) 9.3.1 20200408 (release)
-Copyright (C) 2019 Free Software Foundation, Inc.
+/C/Program Files (x86)/GNU Arm Embedded Toolchain/10 2021.07/bin/arm-none-eabi-gcc
+arm-none-eabi-gcc.exe (GNU Arm Embedded Toolchain 10.3-2021.07) 10.3.1 20210621 (release)
+Copyright (C) 2020 Free Software Foundation, Inc.
 This is free software; see the source for copying conditions.  There is NO
 warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 
@@ -205,21 +206,25 @@ We will get the following images in the directory `cmake_build/bin`:
 -   bl2.bin: [MCUboot](https://github.com/mcu-tools/mcuboot) bootloader binary
 -   tfm_s.bin: TF-M secure binary
 -   tfm_ns.bin: TF-M non-secure binary
--   tfm_s_ns_signed.bin: `tfm_s.bin` and `tfm_ns.bin` signed together
+-   tfm_s_signed.bin: Signed TF-M secure binary
+-   tfm_ns_signed.bin: Signed TF-M non-secure binary
 
-Combine `cmake_build/bin/bl2.bin` and `cmake_build/bin/tfm_s_ns_signed.bin` into one, using SRecord:
+Combine `cmake_build/bin/bl2.bin`, `cmake_build/bin/tfm_s_signed.bin`, and `cmake_build/bin/tfm_ns_signed.bin` into one, using SRecord:
 ```
-$ srec_cat cmake_build/bin/bl2.bin -Binary -offset 0x0 \
-cmake_build/bin/tfm_s_ns_signed.bin -Binary -offset 0x20000 \
--o cmake_build/bin/bl2_tfm_s_ns_signed.hex -Intel
+$ srec_cat \
+cmake_build/bin/bl2.bin -Binary -offset 0x0 \
+cmake_build/bin/tfm_s_signed.bin -Binary -offset 0x20000 \
+cmake_build/bin/tfm_ns_signed.bin -Binary -offset 0x70000 \
+-o cmake_build/bin/bl2-tfm_s_signed-tfm_ns_signed.hex -Intel
 ```
 
-Drag-n-drop `cmake_build/bin/bl2_tfm_s_ns_signed.hex` onto M2354 board to flash the image.
+Drag-n-drop `cmake_build/bin/bl2-tfm_s_signed-tfm_ns_signed.hex` onto M2354 board to flash the image.
 
 Configure terminal program with **115200/8-N-1**, and you would see console log with:
 ```
 [INF] Starting bootloader
-[WRN] Cannot upgrade: slots have non-compatible sectors
+[INF] Swap type: none
+[INF] Swap type: none
 [INF] Bootloader chainload address offset: 0x20000
 [INF] Jumping to the first image slot
 [Sec Thread] Secure image initializing!
@@ -254,9 +259,9 @@ Currently, we support the following customization.
 To define memory spec of Flash for TF-M/Mbed, search/change the line in
 `trusted-firmware-m/platform/ext/target/nuvoton/m2354/partition/flash_layout.h`:
 ```C
-/* Max Flash size for TF-M + bootloader information */
+/* Max Flash size for TF-M + bootloader header/trailer */
 #define FLASH_S_PARTITION_SIZE          (0x50000)
-/* Max Flash size for Mbed + bootloader information */
+/* Max Flash size for Mbed + bootloader header/trailer */
 #define FLASH_NS_PARTITION_SIZE         (0x90000)
 ```
 
@@ -272,7 +277,7 @@ To define memory spec of SRAM for TF-M/Mbed, search/change the line in
 `trusted-firmware-m/platform/ext/target/nuvoton/m2354/partition/region_defs.h`:
 ```C
 /* Max SRAM size for TF-M */
-#define S_DATA_SIZE     (80 * 1024)
+#define S_DATA_SIZE     (96 * 1024)
 /* Max SRAM size for Mbed = Total - Max SRAM size for TF-M */
 #define NS_DATA_SIZE    (TOTAL_RAM_SIZE - S_DATA_SIZE)
 ```
@@ -315,16 +320,36 @@ Below summarize the copy paths from TF-M into Mbed:
 
 -   `trusted-firmware-m/cmake_build/install/outputs/NUVOTON/M2354/bl2.bin` → `MBED_M2354_TFM_IMPORT/bl2.bin`
 -   `trusted-firmware-m/cmake_build/install/outputs/NUVOTON/M2354/tfm_s.bin` → `MBED_M2354_TFM_IMPORT/tfm_s.bin`
--   `trusted-firmware-m/cmake_build/install/export/tfm/lib/s_veneers.o` → `MBED_M2354_TFM_IMPORT/s_veneers.o`
--   `trusted-firmware-m/platform/ext/target/nuvoton/m2354/partition/flash_layout.h` → `MBED_M2354_TFM_IMPORT/partition/flash_layout.h`
+-   `trusted-firmware-m/cmake_build/install/interface/lib/s_veneers.o` → `MBED_M2354_TFM_IMPORT/s_veneers.o`
+-   `trusted-firmware-m/platform/ext/target/nuvoton/m2354/partition/flash_layout.h` → `MBED_M2354_TFM_IMPORT/partition/flash_layout.h`.
+-   `trusted-firmware-m/platform/ext/target/nuvoton/m2354/partition/partition_M2354.h` → `MBED_M2354_TFM_IMPORT/partition/partition_M2354_im.h`
 -   `trusted-firmware-m/platform/ext/target/nuvoton/m2354/partition/region_defs.h` → `MBED_M2354_TFM_IMPORT/partition/region_defs.h`
+
+For single image boot:
 -   `trusted-firmware-m/cmake_build/install/image_signing/layout_files/signing_layout_s_ns.o` → `MBED_M2354_TFM_IMPORT/partition/signing_layout_preprocessed.h`
 -   `trusted-firmware-m/cmake_build/install/image_signing/keys/root-RSA-3072.pem` → `MBED_M2354_TFM_IMPORT/signing_key/nuvoton_m2354-root-rsa-3072.pem`
     → `mbed-os/tools/targets/nuvoton_m2354-root-rsa-3072.pem`
 
+For multiple image boot:
+-   `trusted-firmware-m/cmake_build/install/image_signing/layout_files/signing_layout_s.o` → `MBED_M2354_TFM_IMPORT/partition/signing_layout_s_preprocessed.h`
+-   `trusted-firmware-m/cmake_build/install/image_signing/layout_files/signing_layout_ns.o` → `MBED_M2354_TFM_IMPORT/partition/signing_layout_ns_preprocessed.h`
+-   `trusted-firmware-m/cmake_build/install/image_signing/keys/root-RSA-3072.pem` → `MBED_M2354_TFM_IMPORT/signing_key/nuvoton_m2354-root-rsa-3072.pem`
+    → `mbed-os/tools/targets/nuvoton_m2354-root-rsa-3072.pem`
+-   `trusted-firmware-m/cmake_build/install/image_signing/keys/root-RSA-3072.pem_1` → `MBED_M2354_TFM_IMPORT/signing_key/nuvoton_m2354-root-rsa-3072_1.pem`
+    → `mbed-os/tools/targets/nuvoton_m2354-root-rsa-3072_1.pem`
+
+> **_NOTE:_** For single image boot, TF-M secure binary and Mbed non-secure binary are concatenated first and then signed together;
+for multiple image boot, TF-M secure binary and Mbed non-secure binary are signed separately.
+
+> **_NOTE:_** Prior to Mbed OS 6.14, single image boot is the default.
+Since Mbed OS 6.14, multiple image boot becomes the default.
+
 > **_NOTE:_** Some files are renamed.
 
 > **_NOTE:_** The `mbed-os/tools/targets` path is for legacy Mbed CLI build tool.
+
+> **_NOTE:_** `trusted-firmware-m/cmake_build/install/image_signing/keys/root-RSA-3072.pem` can be missing due to TF-M build tool issue.
+Try to get it from `trusted-firmware-m/bl2/ext/mcuboot/root-RSA-3072.pem` instead if it is just the original source.
 
 Now, we can compile Mbed programs for M2354 normally, specifying target name `NU_M2354`.
 
@@ -332,31 +357,37 @@ Now, we can compile Mbed programs for M2354 normally, specifying target name `NU
 
 In the section, advanced topics are addressed here.
 
-### Example: Changing secure boot signing key for M2354
+### Example: Changing secure boot signing keys for M2354
 
 TF-M supports secure boot using [MCUboot](https://github.com/mcu-tools/mcuboot).
 Default RSA key pairs are placed in `trusted-firmware-m/bl2/ext/mcuboot/root-RSA-*.pem`.
 They are exclusively for development and cannot for production.
-In the following, we guide how to change the signing key, assuming default MCUboot configurations for M2354 below:
+In the following, we guide how to change the signing keys, assuming default MCUboot configurations for M2354 below:
 -   MCUBOOT_SIGNATURE_TYPE: RSA
 -   MCUBOOT_SIGNATURE_KEY_LEN: 3072
--   MCUBOOT_IMAGE_NUMBER: 1
+-   MCUBOOT_IMAGE_NUMBER: 2 (that is, multiple image boot)
 -   MCUBOOT_HW_KEY: True
-
 
 > **_NOTE:_** For detailed TF-M secure boot, navigate [TF-M](https://www.trustedfirmware.org/projects/tf-m/).
 Then go through **DOCS** → **References** → **Secure boot**.
 
-First generate a new RSA key pair.
-This overrides `trusted-firmware-m/bl2/ext/mcuboot/root-RSA-3072.pem`:
+> **_NOTE:_** The above MCUboot configurations are the default and must be consistent across TF-M and Mbed. Don't change them rashly.
+
+First generate two new RSA key pairs and override:
+-   `trusted-firmware-m/bl2/ext/mcuboot/root-RSA-3072.pem`
+-   `trusted-firmware-m/bl2/ext/mcuboot/root-RSA-3072_1.pem`
 ```
 $ cd trusted-firmware-m
 $ imgtool keygen -t rsa-3072 -k bl2/ext/mcuboot/root-RSA-3072.pem
+$ imgtool keygen -t rsa-3072 -k bl2/ext/mcuboot/root-RSA-3072_1.pem
 ```
 
-Dump public key hash from the generated key pair (for `MCUBOOT_HW_KEY`(`True`)):
+For `MCUBOOT_HW_KEY`(`True`), dump public key hash from the generated key pairs above:
 ```
 $ openssl rsa -in bl2/ext/mcuboot/root-RSA-3072.pem -RSAPublicKey_out -outform DER |\
+openssl dgst -sha256 -binary |\
+hexdump -e '8/1 "0x%02x, " "\n"'
+$ openssl rsa -in bl2/ext/mcuboot/root-RSA-3072_1.pem -RSAPublicKey_out -outform DER |\
 openssl dgst -sha256 -binary |\
 hexdump -e '8/1 "0x%02x, " "\n"'
 ```
@@ -367,13 +398,20 @@ And then override specific code in `trusted-firmware-m/platform/ext/common/templ
 uint8_t rotpk_hash_0[ROTPK_HASH_LEN] = {
     /* OVERRIDE ME */
 };
+/* Hash of public key: bl2/ext/mcuboot/root-rsa-3072_1.pem */
+#if (MCUBOOT_IMAGE_NUMBER == 2)
+uint8_t rotpk_hash_1[ROTPK_HASH_LEN] = {
+    /* OVERRIDE ME */
+};
+#endif /* MCUBOOT_IMAGE_NUMBER */
 ```
 
 > **_NOTE:_** The public key embedded into MCUboot is in PKCS1 format, so we specify `-RSAPublicKey_out`.
 
-Dump public key from the generated key pair (for `MCUBOOT_HW_KEY`(`False`)):
+For `MCUBOOT_HW_KEY`(`False`), dump public key from the generated key pairs above:
 ```
 $ imgtool getpub -k bl2/ext/mcuboot/root-RSA-3072.pem
+$ imgtool getpub -k bl2/ext/mcuboot/root-RSA-3072_1.pem
 ```
 And then override specific code in `trusted-firmware-m/bl2/ext/mcuboot/keys.c`:
 ```C
@@ -383,11 +421,17 @@ const unsigned char rsa_pub_key[] = {
     /* OVERRIDE ME */
 };
 const unsigned int rsa_pub_key_len = /* OVERRIDE ME */;
+#if (MCUBOOT_IMAGE_NUMBER == 2)
+const unsigned char rsa_pub_key_1[] = {
+    /* OVERRIDE ME */
+};
+const unsigned int rsa_pub_key_len_1 = /* OVERRIDE ME */;
+#endif
 ```
 
 > **_NOTE:_** For `MCUBOOT_SIGNATURE_KEY_LEN`(`2048`), override the `trusted-firmware-m/bl2/ext/mcuboot/root-RSA-2048*.pem` file and the `MCUBOOT_SIGN_RSA_LEN == 2048` code instead.
 
-> **_NOTE:_** For `MCUBOOT_IMAGE_NUMBER`(`2`), generating second RSA key pair, override the `trusted-firmware-m/bl2/ext/mcuboot/root-RSA-*_1.pem` file and the `MCUBOOT_IMAGE_NUMBER == 2` code extra.
+> **_NOTE:_** For `MCUBOOT_IMAGE_NUMBER`(`1`), skip the steps above with the `root-RSA-*_1.pem` file and the `MCUBOOT_IMAGE_NUMBER == 2` code.
 
 > **_NOTE:_** Depending on `MCUBOOT_HW_KEY`, go dump public key hash or dump public key.
 
