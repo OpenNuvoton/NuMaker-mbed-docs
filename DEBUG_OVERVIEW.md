@@ -50,6 +50,12 @@ All Nuvoton targets are shipped with Nu-Link/Nu-Link2 USB adapters, which enable
 
     **Note2**: Check [Enable debugging on Nuvoton's targets with Keil uVision](Keil/DEBUG_KEIL.md) for needed setup.
 
+-   [Build with GCC and debug with Eclipse CDT Standalone Debugger](Eclipse/BUILD_GCC_DEBUG_CDTDEBUGGER.md)
+
+    This approach builds your project with GCC toolchain, and debugs with Eclipse CDT Standalone Debugger.
+
+    **Note**: This approach only requires GCC toolchain and is build system-agnostic.
+
 -   [Enable post-mortem debugging with Keil uVision](Keil/POSTMORTEM_DEBUG_KEIL.md)
 
     This document instructs how to enable post-mortem debugging with Keil uVision on a crashed device.
